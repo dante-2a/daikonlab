@@ -57,7 +57,8 @@ function escapeHtml(str) {
 }
 
 function formatMessageText(escaped) {
-  let out = escaped;
+  if (!escaped) return "";
+  let out = String(escaped);
   out = out.replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>");
   out = out.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   out = out.replace(/(?<!\*)\*(?!\*)([^*]+?)\*(?!\*)/g, "<em>$1</em>");
@@ -104,7 +105,7 @@ document.getElementById("show-signup").onclick = () => {
 };
 document.getElementById("show-login").onclick = () => {
   signupForm.classList.add("hidden");
-  document.getElementById("show-login").classList.add("hidden");
+  document.getElementById("show-login").classList.remove("hidden");
   loginForm.classList.remove("hidden");
   document.getElementById("show-signup").classList.remove("hidden");
 };
@@ -385,8 +386,8 @@ function renderMessages(messagesToRender) {
     row.className = "message-row";
     const canDelete = msg.user === currentUser || isAdmin();
     row.innerHTML = `
-      <span class="msg-user">${escapeHtml(msg.user)}</span>
       <span class="msg-time">${formatTime(msg.timestamp)}</span>
+      <span class="msg-user">${escapeHtml(msg.user)}:</span>
       <span class="msg-text">${formatMessageText(escapeHtml(msg.text))}</span>
       ${canDelete ? `<button class="msg-delete" title="Delete message">×</button>` : ""}
     `;
