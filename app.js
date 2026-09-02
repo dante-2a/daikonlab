@@ -4,7 +4,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getDatabase, ref, set, get, push, remove, onValue, onDisconnect,
-  serverTimestamp, query, orderByChild
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 const firebaseConfig = {
@@ -337,11 +337,15 @@ async function openChannel(type, id) {
   lastReadAtOpen = lastReadSnap.exists() ? lastReadSnap.val() : null;
 
   if (messagesUnsub) messagesUnsub();
-  const msgsQuery = query(ref(db, messagesPath()), orderByChild("timestamp"));
-  messagesUnsub = onValue(msgsQuery, (snap) => {
+  const msgsRef = ref(db, messagesPath());
+  messagesUnsub = onValue(msgsRef, (snap) => {
     const messages = [];
     snap.forEach((child) => messages.push({ key: child.key, ...child.val() }));
+    messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    console.log(`[messages] ${messagesPath()} -> ${messages.length} message(s)`);
     renderMessages(messages);
+  }, (err) => {
+    console.error("Message listener error:", err);
   });
 }
 
@@ -402,6 +406,7 @@ document.getElementById("message-form").addEventListener("submit", async (e) => 
       text,
       timestamp: Date.now()
     });
+    console.log("Message pushed OK to", messagesPath());
   } catch (err) {
     console.error("Send failed:", err);
     errEl.textContent = `Send failed: ${err.message || err}`;
