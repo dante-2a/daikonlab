@@ -210,7 +210,6 @@ document.addEventListener("visibilitychange", () => {
     set(ref(db, `presence/${currentUser}`), {
       status: "online", displayName: currentUser, lastChange: Date.now()
     });
-    // Force a fresh subscription in case the old one went stale while backgrounded
     openChannel(currentChannel.type, currentChannel.id);
   }
 });
@@ -346,7 +345,9 @@ async function openChannel(type, id) {
   const msgsRef = ref(db, messagesPath());
   messagesUnsub = onValue(msgsRef, (snap) => {
     const messages = [];
-    snap.forEach((child) => messages.push({ key: child.key, ...child.val() }));
+    snap.forEach((child) => {
+      messages.push({ key: child.key, ...child.val() });
+    });
     messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
     console.log(`[messages] ${messagesPath()} -> ${messages.length} message(s)`);
     renderMessages(messages);
@@ -416,7 +417,7 @@ document.getElementById("message-form").addEventListener("submit", async (e) => 
   } catch (err) {
     console.error("Send failed:", err);
     errEl.textContent = `Send failed: ${err.message || err}`;
-    input.value = text; // give the message back so it isn't lost
+    input.value = text;
   }
 });
 
@@ -464,7 +465,9 @@ function renderInfoPanel() {
   onValue(ref(db, "users"), (snap) => {
     const rows = [];
     snap.forEach((child) => {
-  messages.push({ key: child.key, ...child.val() });
+      const key = child.key;
+      if (key === ADMIN_HANDLE) return;
+      rows.push({ key, displayName: child.val().displayName || key });
     });
     const list = document.getElementById("admin-user-list");
     list.innerHTML = rows.map(u => `
