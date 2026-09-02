@@ -172,6 +172,10 @@ function enterApp(userKey, displayName) {
   document.getElementById("info-btn").onclick = () => toggleInfoPanel(true);
   document.getElementById("info-close-btn").onclick = () => toggleInfoPanel(false);
   document.getElementById("new-conv-btn").onclick = createConversation;
+  document.getElementById("refresh-btn").onclick = () => {
+    openChannel(currentChannel.type, currentChannel.id);
+    console.log("Manual refresh triggered for", messagesPath());
+  };
 
   ensureTodayExists().then(() => {
     watchDayList();
@@ -206,6 +210,8 @@ document.addEventListener("visibilitychange", () => {
     set(ref(db, `presence/${currentUser}`), {
       status: "online", displayName: currentUser, lastChange: Date.now()
     });
+    // Force a fresh subscription in case the old one went stale while backgrounded
+    openChannel(currentChannel.type, currentChannel.id);
   }
 });
 
