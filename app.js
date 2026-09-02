@@ -24,7 +24,7 @@ document.title = "Group Project for Daikon Observation Lab";
 
 const ADMIN_HANDLE = "ADMIN";
 
-// --- tiny client-side hash (NOT strong crypto — see README limitations) ---
+// --- tiny client-side hash ---
 async function hashPass(str) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -56,7 +56,6 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// Discord-style inline formatting. Runs AFTER escaping, on already-safe text.
 function formatMessageText(escaped) {
   let out = escaped;
   out = out.replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>");
@@ -71,7 +70,7 @@ function formatMessageText(escaped) {
 // ---------------------------------------------------------------
 // State
 // ---------------------------------------------------------------
-let currentUser = null;        // sanitized handle, used as DB key
+let currentUser = null;
 let currentChannel = { type: "day", id: todayKey() };
 let messagesUnsub = null;
 let lastReadAtOpen = null;
@@ -174,7 +173,6 @@ function enterApp(userKey, displayName) {
   document.getElementById("new-conv-btn").onclick = createConversation;
   document.getElementById("refresh-btn").onclick = () => {
     openChannel(currentChannel.type, currentChannel.id);
-    console.log("Manual refresh triggered for", messagesPath());
   };
 
   ensureTodayExists().then(() => {
@@ -228,7 +226,10 @@ async function ensureTodayExists() {
 function watchDayList() {
   onValue(ref(db, "days"), (snap) => {
     const days = [];
-    snap.forEach((child) => days.push(child.key));
+    snap.forEach((child) => {
+      days.push(child.key);
+      return false;
+    });
     days.sort().reverse();
     renderDayList(days);
   });
@@ -264,7 +265,10 @@ async function createConversation() {
 function watchConversationList() {
   onValue(ref(db, "conversations"), (snap) => {
     const convs = [];
-    snap.forEach((child) => convs.push({ id: child.key, ...child.val() }));
+    snap.forEach((child) => {
+      convs.push({ id: child.key, ...child.val() });
+      return false;
+    });
     convs.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     renderConversationList(convs);
   });
@@ -333,9 +337,6 @@ async function openChannel(type, id) {
     delBtn.classList.add("hidden");
   }
 
-  document.querySelectorAll("#day-list .day-entry, #conv-list .day-entry").forEach((el) => {
-    el.classList.remove("active");
-  });
   refreshActiveHighlight();
 
   const lastReadSnap = await get(ref(db, lastReadPath()));
@@ -344,13 +345,13 @@ async function openChannel(type, id) {
   if (messagesUnsub) messagesUnsub();
   const msgsRef = ref(db, messagesPath());
   messagesUnsub = onValue(msgsRef, (snap) => {
-    const messages = [];
+    const channelMessages = [];
     snap.forEach((child) => {
-      messages.push({ key: child.key, ...child.val() });
+      channelMessages.push({ key: child.key, ...child.val() });
+      return false;
     });
-    messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-    console.log(`[messages] ${messagesPath()} -> ${messages.length} message(s)`);
-    renderMessages(messages);
+    channelMessages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    renderMessages(channelMessages);
   }, (err) => {
     console.error("Message listener error:", err);
   });
@@ -362,17 +363,17 @@ function refreshActiveHighlight() {
   });
 }
 
-function renderMessages(messages) {
+function renderMessages(messagesToRender) {
   const list = document.getElementById("message-list");
   list.innerHTML = "";
 
-  if (messages.length === 0) {
+  if (messagesToRender.length === 0) {
     list.innerHTML = `<div class="empty-log">No notes yet. Be the first to log an observation.</div>`;
     return;
   }
 
   let dividerPlaced = lastReadAtOpen === null;
-  messages.forEach((msg) => {
+  messagesToRender.forEach((msg) => {
     if (!dividerPlaced && msg.timestamp && msg.timestamp > lastReadAtOpen) {
       const divider = document.createElement("div");
       divider.className = "unread-divider";
@@ -413,7 +414,6 @@ document.getElementById("message-form").addEventListener("submit", async (e) => 
       text,
       timestamp: Date.now()
     });
-    console.log("Message pushed OK to", messagesPath());
   } catch (err) {
     console.error("Send failed:", err);
     errEl.textContent = `Send failed: ${err.message || err}`;
@@ -432,6 +432,7 @@ function watchRoster() {
       const v = child.val();
       const name = v.displayName || child.key;
       (v.status === "online" ? online : offline).push(name);
+      return false;
     });
     online.sort();
     offline.sort();
@@ -448,7 +449,7 @@ function watchRoster() {
 }
 
 // ---------------------------------------------------------------
-// Info panel (formatting help + admin controls)
+// Info panel
 // ---------------------------------------------------------------
 function toggleInfoPanel(show) {
   document.getElementById("info-panel").classList.toggle("hidden", !show);
@@ -463,14 +464,16 @@ function renderInfoPanel() {
   }
   adminSection.classList.remove("hidden");
   onValue(ref(db, "users"), (snap) => {
-    const rows = [];
+    const userRows = [];
     snap.forEach((child) => {
       const key = child.key;
-      if (key === ADMIN_HANDLE) return;
-      rows.push({ key, displayName: child.val().displayName || key });
+      if (key !== ADMIN_HANDLE) {
+        userRows.push({ key, displayName: child.val().displayName || key });
+      }
+      return false;
     });
     const list = document.getElementById("admin-user-list");
-    list.innerHTML = rows.map(u => `
+    list.innerHTML = userRows.map(u => `
       <div class="admin-user-row">
         <span>${escapeHtml(u.displayName)}</span>
         <button class="admin-remove-btn" data-key="${u.key}">Remove</button>
