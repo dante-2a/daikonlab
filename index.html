@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Group Project for Daikon Observation Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===================== AUTH SCREEN ===================== -->
+  <div id="auth-screen" class="screen">
+    <div class="auth-card">
+      <div class="specimen-tag">Field Log &middot; est. this semester</div>
+      <h1>Daikon Observation Lab</h1>
+      <p class="auth-sub">Sign in to log today's notes.</p>
+
+      <form id="login-form">
+        <label>Handle
+          <input type="text" id="login-username" autocomplete="username" required />
+        </label>
+        <label>Passphrase
+          <input type="password" id="login-password" autocomplete="current-password" required />
+        </label>
+        <div id="login-error" class="form-error"></div>
+        <button type="submit" class="btn-primary">Enter the lab</button>
+      </form>
+
+      <button id="show-signup" class="btn-link">New here? Register a handle</button>
+
+      <form id="signup-form" class="hidden">
+        <label>Choose a handle
+          <input type="text" id="signup-username" autocomplete="username" required />
+        </label>
+        <label>Choose a passphrase
+          <input type="password" id="signup-password" autocomplete="new-password" required minlength="4" />
+        </label>
+        <div id="signup-error" class="form-error"></div>
+        <button type="submit" class="btn-primary">Create handle</button>
+      </form>
+
+      <button id="show-login" class="btn-link hidden">Already registered? Sign in</button>
+    </div>
+  </div>
+
+  <!-- ===================== APP SCREEN ===================== -->
+  <div id="app-screen" class="screen hidden">
+
+    <!-- Left: day log -->
+    <aside class="pane pane-days">
+      <div class="pane-header">
+        <span class="pane-title">Log</span>
+      </div>
+      <div id="day-list" class="day-list"></div>
+    </aside>
+
+    <!-- Center: chat -->
+    <main class="pane pane-chat">
+      <div class="pane-header chat-header">
+        <span id="current-day-label" class="pane-title">&mdash;</span>
+        <button id="logout-btn" class="btn-ghost">Sign off</button>
+      </div>
+      <div id="message-list" class="message-list"></div>
+      <form id="message-form" class="message-form">
+        <input type="text" id="message-input" placeholder="Add a note to the log&hellip;" autocomplete="off" />
+        <button type="submit" class="btn-primary btn-send">Send</button>
+      </form>
+    </main>
+
+    <!-- Right: roster -->
+    <aside class="pane pane-roster">
+      <div class="pane-header">
+        <span class="pane-title">Roster</span>
+      </div>
+      <div class="roster-group">
+        <div class="roster-group-label">Online</div>
+        <div id="roster-online" class="roster-list"></div>
+      </div>
+      <div class="roster-group">
+        <div class="roster-group-label">Offline</div>
+        <div id="roster-offline" class="roster-list"></div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- Firebase SDKs -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>
