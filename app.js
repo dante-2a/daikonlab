@@ -391,14 +391,22 @@ function renderMessages(messages) {
 document.getElementById("message-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const input = document.getElementById("message-input");
+  const errEl = document.getElementById("message-error");
+  errEl.textContent = "";
   const text = input.value.trim();
   if (!text || !currentUser) return;
   input.value = "";
-  await push(ref(db, messagesPath()), {
-    user: currentUser,
-    text,
-    timestamp: Date.now()
-  });
+  try {
+    await push(ref(db, messagesPath()), {
+      user: currentUser,
+      text,
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.error("Send failed:", err);
+    errEl.textContent = `Send failed: ${err.message || err}`;
+    input.value = text; // give the message back so it isn't lost
+  }
 });
 
 // ---------------------------------------------------------------
