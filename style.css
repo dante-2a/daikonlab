@@ -356,6 +356,11 @@ form input:focus {
   padding: 20px 0;
 }
 
+.message-error {
+  padding: 0 20px;
+  margin: 0;
+}
+
 .message-form {
   display: flex;
   gap: 8px;
