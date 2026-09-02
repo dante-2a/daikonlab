@@ -464,9 +464,7 @@ function renderInfoPanel() {
   onValue(ref(db, "users"), (snap) => {
     const rows = [];
     snap.forEach((child) => {
-      const key = child.key;
-      if (key === ADMIN_HANDLE) return;
-      rows.push({ key, displayName: child.val().displayName || key });
+  messages.push({ key: child.key, ...child.val() });
     });
     const list = document.getElementById("admin-user-list");
     list.innerHTML = rows.map(u => `
