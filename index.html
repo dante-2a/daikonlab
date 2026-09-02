@@ -55,13 +55,23 @@
         <span class="pane-title">Log</span>
       </div>
       <div id="day-list" class="day-list"></div>
+
+      <div class="pane-header conv-header">
+        <span class="pane-title">Conversations</span>
+        <button id="new-conv-btn" class="btn-ghost btn-tiny">+ New</button>
+      </div>
+      <div id="conv-list" class="day-list"></div>
     </aside>
 
     <!-- Center: chat -->
     <main class="pane pane-chat">
       <div class="pane-header chat-header">
         <span id="current-day-label" class="pane-title">&mdash;</span>
-        <button id="logout-btn" class="btn-ghost">Sign off</button>
+        <div class="chat-header-actions">
+          <button id="delete-conv-btn" class="btn-ghost hidden">Delete</button>
+          <button id="info-btn" class="btn-ghost">Info</button>
+          <button id="logout-btn" class="btn-ghost">Sign off</button>
+        </div>
       </div>
       <div id="message-list" class="message-list"></div>
       <form id="message-form" class="message-form">
@@ -85,6 +95,44 @@
       </div>
     </aside>
 
+  </div>
+
+  <!-- ===================== INFO PANEL ===================== -->
+  <div id="info-panel" class="info-panel hidden">
+    <div class="info-panel-inner">
+      <div class="info-panel-header">
+        <span class="pane-title">Info</span>
+        <button id="info-close-btn" class="btn-ghost">Close</button>
+      </div>
+
+      <section class="info-block">
+        <h3>Formatting</h3>
+        <ul class="info-list">
+          <li><code>*text*</code> &rarr; <em>text</em></li>
+          <li><code>**text**</code> &rarr; <strong>text</strong></li>
+          <li><code>***text***</code> &rarr; <strong><em>text</em></strong></li>
+          <li><code>__text__</code> &rarr; <u>text</u></li>
+          <li><code>~~text~~</code> &rarr; <s>text</s></li>
+          <li><code>`text`</code> &rarr; <code>text</code></li>
+        </ul>
+      </section>
+
+      <section class="info-block">
+        <h3>How this works</h3>
+        <ul class="info-list">
+          <li>Each day gets its own log automatically. Old days stay in the list on the left.</li>
+          <li><strong>Conversations</strong> are separate rooms anyone can create, join, and post in.</li>
+          <li>Going offline (closing the tab, switching away, or signing off) marks where you left off — a red line shows what you missed when you're back.</li>
+          <li>You can delete your own messages. You can delete a conversation you created.</li>
+        </ul>
+      </section>
+
+      <section id="admin-section" class="info-block hidden">
+        <h3>Admin controls</h3>
+        <p class="info-note">Passwords are hashed and can't be viewed, even by ADMIN &mdash; you can remove an account instead.</p>
+        <div id="admin-user-list" class="admin-user-list"></div>
+      </section>
+    </div>
   </div>
 
   <!-- Firebase SDKs -->
