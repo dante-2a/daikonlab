@@ -3,11 +3,10 @@
 // ===================================================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getDatabase, ref, set, get, push, onValue, onDisconnect,
+  getDatabase, ref, set, get, push, remove, onValue, onDisconnect,
   serverTimestamp, query, orderByChild
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-// --- Fill this in with your own Firebase config ---
 const firebaseConfig = {
   apiKey: "AIzaSyDeXL-AR1bL8FzfsEOWHOiLZmm85jTUkLI",
   authDomain: "daikon-lab.firebaseapp.com",
@@ -22,6 +21,8 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
 document.title = "Group Project for Daikon Observation Lab";
+
+const ADMIN_HANDLE = "ADMIN";
 
 // --- tiny client-side hash (NOT strong crypto — see README limitations) ---
 async function hashPass(str) {
@@ -49,13 +50,44 @@ function formatTime(ts) {
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str ?? "";
+  return div.innerHTML;
+}
+
+// Discord-style inline formatting. Runs AFTER escaping, on already-safe text.
+function formatMessageText(escaped) {
+  let out = escaped;
+  out = out.replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>");
+  out = out.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  out = out.replace(/(?<!\*)\*(?!\*)([^*]+?)\*(?!\*)/g, "<em>$1</em>");
+  out = out.replace(/__(.+?)__/g, "<u>$1</u>");
+  out = out.replace(/~~(.+?)~~/g, "<s>$1</s>");
+  out = out.replace(/`([^`]+?)`/g, "<code>$1</code>");
+  return out;
+}
+
 // ---------------------------------------------------------------
 // State
 // ---------------------------------------------------------------
-let currentUser = null;   // sanitized handle, used as DB key
-let currentDay = todayKey();
+let currentUser = null;        // sanitized handle, used as DB key
+let currentChannel = { type: "day", id: todayKey() };
 let messagesUnsub = null;
-let lastReadAtOpen = null; // timestamp captured when the current day view was opened
+let lastReadAtOpen = null;
+
+function isAdmin() {
+  return currentUser === ADMIN_HANDLE;
+}
+
+function lastReadPath() {
+  return `lastRead/${currentUser}/${currentChannel.type}-${currentChannel.id}`;
+}
+function messagesPath() {
+  return currentChannel.type === "day"
+    ? `days/${currentChannel.id}/messages`
+    : `conversations/${currentChannel.id}/messages`;
+}
 
 // ---------------------------------------------------------------
 // Auth screen wiring
@@ -123,32 +155,36 @@ function enterApp(userKey, displayName) {
   currentUser = userKey;
   authScreen.classList.add("hidden");
   appScreen.classList.remove("hidden");
+  document.body.classList.toggle("is-admin", isAdmin());
 
   const presenceRef = ref(db, `presence/${userKey}`);
   set(presenceRef, { status: "online", displayName, lastChange: Date.now() });
 
-  // If the tab just closes / connection drops, mark offline & stamp lastRead
   const connectedRef = ref(db, ".info/connected");
   onValue(connectedRef, (snap) => {
     if (snap.val() === true) {
       onDisconnect(presenceRef).update({ status: "offline", lastChange: serverTimestamp() });
-      onDisconnect(ref(db, `lastRead/${userKey}/${currentDay}`)).set(serverTimestamp());
+      onDisconnect(ref(db, lastReadPath())).set(serverTimestamp());
     }
   });
 
   document.getElementById("logout-btn").onclick = () => goOffline(true);
+  document.getElementById("info-btn").onclick = () => toggleInfoPanel(true);
+  document.getElementById("info-close-btn").onclick = () => toggleInfoPanel(false);
+  document.getElementById("new-conv-btn").onclick = createConversation;
 
   ensureTodayExists().then(() => {
     watchDayList();
-    openDay(currentDay);
+    watchConversationList();
+    openChannel("day", currentChannel.id);
   });
   watchRoster();
+  renderInfoPanel();
 }
 
 async function goOffline(isLogout) {
   if (!currentUser) return;
-  // stamp where the conversation left off, for the unread marker next time
-  await set(ref(db, `lastRead/${currentUser}/${currentDay}`), Date.now());
+  await set(ref(db, lastReadPath()), Date.now());
   await set(ref(db, `presence/${currentUser}`), {
     status: "offline",
     displayName: currentUser,
@@ -163,7 +199,6 @@ async function goOffline(isLogout) {
   }
 }
 
-// mark offline automatically if the tab is hidden/closed (in addition to onDisconnect)
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden" && currentUser) {
     goOffline(false);
@@ -186,11 +221,10 @@ async function ensureTodayExists() {
 }
 
 function watchDayList() {
-  const daysRef = ref(db, "days");
-  onValue(daysRef, (snap) => {
+  onValue(ref(db, "days"), (snap) => {
     const days = [];
     snap.forEach((child) => days.push(child.key));
-    days.sort().reverse(); // most recent first
+    days.sort().reverse();
     renderDayList(days);
   });
 }
@@ -200,33 +234,120 @@ function renderDayList(days) {
   list.innerHTML = "";
   days.forEach((dayKey) => {
     const btn = document.createElement("button");
-    btn.className = "day-entry" + (dayKey === currentDay ? " active" : "");
+    btn.className = "day-entry" + (currentChannel.type === "day" && dayKey === currentChannel.id ? " active" : "");
     btn.innerHTML = `<span class="day-num">${dayKey}</span>${formatDayLabel(dayKey)}`;
-    btn.onclick = () => openDay(dayKey);
+    btn.onclick = () => openChannel("day", dayKey);
     list.appendChild(btn);
+  });
+}
+
+// ---------------------------------------------------------------
+// Conversations (left pane, below days)
+// ---------------------------------------------------------------
+async function createConversation() {
+  const name = prompt("Name this conversation:");
+  if (!name || !name.trim()) return;
+  const convRef = push(ref(db, "conversations"));
+  await set(convRef, {
+    name: name.trim(),
+    createdBy: currentUser,
+    createdAt: Date.now()
+  });
+  openChannel("conversation", convRef.key);
+}
+
+function watchConversationList() {
+  onValue(ref(db, "conversations"), (snap) => {
+    const convs = [];
+    snap.forEach((child) => convs.push({ id: child.key, ...child.val() }));
+    convs.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    renderConversationList(convs);
+  });
+}
+
+function renderConversationList(convs) {
+  const list = document.getElementById("conv-list");
+  list.innerHTML = "";
+  if (convs.length === 0) {
+    list.innerHTML = `<div class="empty-log">No conversations yet.</div>`;
+    return;
+  }
+  convs.forEach((conv) => {
+    const row = document.createElement("div");
+    row.className = "conv-row";
+    const btn = document.createElement("button");
+    btn.className = "day-entry" + (currentChannel.type === "conversation" && conv.id === currentChannel.id ? " active" : "");
+    btn.textContent = conv.name;
+    btn.onclick = () => openChannel("conversation", conv.id);
+    row.appendChild(btn);
+
+    if (conv.createdBy === currentUser || isAdmin()) {
+      const del = document.createElement("button");
+      del.className = "conv-delete";
+      del.title = "Delete conversation";
+      del.textContent = "×";
+      del.onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Delete "${conv.name}" and all its messages?`)) return;
+        await remove(ref(db, `conversations/${conv.id}`));
+        if (currentChannel.type === "conversation" && currentChannel.id === conv.id) {
+          openChannel("day", todayKey());
+        }
+      };
+      row.appendChild(del);
+    }
+    list.appendChild(row);
   });
 }
 
 // ---------------------------------------------------------------
 // Chat (center pane)
 // ---------------------------------------------------------------
-async function openDay(dayKey) {
-  currentDay = dayKey;
-  document.getElementById("current-day-label").textContent = formatDayLabel(dayKey);
-  document.querySelectorAll(".day-entry").forEach((el) => {
-    el.classList.toggle("active", el.querySelector(".day-num").textContent === dayKey);
-  });
+async function openChannel(type, id) {
+  currentChannel = { type, id };
+  const label = type === "day"
+    ? formatDayLabel(id)
+    : (await get(ref(db, `conversations/${id}/name`))).val() || "Conversation";
+  document.getElementById("current-day-label").textContent = label;
 
-  // fetch lastRead marker for this day BEFORE subscribing, so we know where to draw the divider
-  const lastReadSnap = await get(ref(db, `lastRead/${currentUser}/${dayKey}`));
+  const delBtn = document.getElementById("delete-conv-btn");
+  if (type === "conversation") {
+    const convSnap = await get(ref(db, `conversations/${id}`));
+    const conv = convSnap.val();
+    if (conv && (conv.createdBy === currentUser || isAdmin())) {
+      delBtn.classList.remove("hidden");
+      delBtn.onclick = async () => {
+        if (!confirm(`Delete "${conv.name}" and all its messages?`)) return;
+        await remove(ref(db, `conversations/${id}`));
+        openChannel("day", todayKey());
+      };
+    } else {
+      delBtn.classList.add("hidden");
+    }
+  } else {
+    delBtn.classList.add("hidden");
+  }
+
+  document.querySelectorAll("#day-list .day-entry, #conv-list .day-entry").forEach((el) => {
+    el.classList.remove("active");
+  });
+  refreshActiveHighlight();
+
+  const lastReadSnap = await get(ref(db, lastReadPath()));
   lastReadAtOpen = lastReadSnap.exists() ? lastReadSnap.val() : null;
 
   if (messagesUnsub) messagesUnsub();
-  const msgsQuery = query(ref(db, `days/${dayKey}/messages`), orderByChild("timestamp"));
+  const msgsQuery = query(ref(db, messagesPath()), orderByChild("timestamp"));
   messagesUnsub = onValue(msgsQuery, (snap) => {
     const messages = [];
-    snap.forEach((child) => messages.push(child.val()));
+    snap.forEach((child) => messages.push({ key: child.key, ...child.val() }));
     renderMessages(messages);
+  });
+}
+
+function refreshActiveHighlight() {
+  document.querySelectorAll("#day-list .day-entry").forEach((el) => {
+    el.classList.toggle("active", currentChannel.type === "day" && el.querySelector(".day-num")?.textContent === currentChannel.id);
   });
 }
 
@@ -239,7 +360,7 @@ function renderMessages(messages) {
     return;
   }
 
-  let dividerPlaced = lastReadAtOpen === null; // if no marker, never show a divider
+  let dividerPlaced = lastReadAtOpen === null;
   messages.forEach((msg) => {
     if (!dividerPlaced && msg.timestamp && msg.timestamp > lastReadAtOpen) {
       const divider = document.createElement("div");
@@ -250,11 +371,18 @@ function renderMessages(messages) {
     }
     const row = document.createElement("div");
     row.className = "message-row";
+    const canDelete = msg.user === currentUser || isAdmin();
     row.innerHTML = `
       <span class="msg-user">${escapeHtml(msg.user)}</span>
       <span class="msg-time">${formatTime(msg.timestamp)}</span>
-      <span class="msg-text">${escapeHtml(msg.text)}</span>
+      <span class="msg-text">${formatMessageText(escapeHtml(msg.text))}</span>
+      ${canDelete ? `<button class="msg-delete" title="Delete message">×</button>` : ""}
     `;
+    if (canDelete) {
+      row.querySelector(".msg-delete").onclick = async () => {
+        await remove(ref(db, `${messagesPath()}/${msg.key}`));
+      };
+    }
     list.appendChild(row);
   });
   list.scrollTop = list.scrollHeight;
@@ -266,18 +394,12 @@ document.getElementById("message-form").addEventListener("submit", async (e) => 
   const text = input.value.trim();
   if (!text || !currentUser) return;
   input.value = "";
-  await push(ref(db, `days/${currentDay}/messages`), {
+  await push(ref(db, messagesPath()), {
     user: currentUser,
     text,
     timestamp: Date.now()
   });
 });
-
-function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str ?? "";
-  return div.innerHTML;
-}
 
 // ---------------------------------------------------------------
 // Roster (right pane)
@@ -302,5 +424,45 @@ function watchRoster() {
     offlineEl.innerHTML = offline.map(n =>
       `<div class="roster-entry offline-name"><span class="status-dot offline"></span>${escapeHtml(n)}</div>`
     ).join("");
+  });
+}
+
+// ---------------------------------------------------------------
+// Info panel (formatting help + admin controls)
+// ---------------------------------------------------------------
+function toggleInfoPanel(show) {
+  document.getElementById("info-panel").classList.toggle("hidden", !show);
+  if (show) renderInfoPanel();
+}
+
+function renderInfoPanel() {
+  const adminSection = document.getElementById("admin-section");
+  if (!isAdmin()) {
+    adminSection.classList.add("hidden");
+    return;
+  }
+  adminSection.classList.remove("hidden");
+  onValue(ref(db, "users"), (snap) => {
+    const rows = [];
+    snap.forEach((child) => {
+      const key = child.key;
+      if (key === ADMIN_HANDLE) return;
+      rows.push({ key, displayName: child.val().displayName || key });
+    });
+    const list = document.getElementById("admin-user-list");
+    list.innerHTML = rows.map(u => `
+      <div class="admin-user-row">
+        <span>${escapeHtml(u.displayName)}</span>
+        <button class="admin-remove-btn" data-key="${u.key}">Remove</button>
+      </div>
+    `).join("") || `<div class="empty-log">No other accounts yet.</div>`;
+    list.querySelectorAll(".admin-remove-btn").forEach(btn => {
+      btn.onclick = async () => {
+        const key = btn.dataset.key;
+        if (!confirm(`Remove account "${key}"? Their past messages stay in the log.`)) return;
+        await remove(ref(db, `users/${key}`));
+        await remove(ref(db, `presence/${key}`));
+      };
+    });
   });
 }
